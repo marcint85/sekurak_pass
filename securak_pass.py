@@ -7,16 +7,20 @@ import os
 import logging
 
 from multiprocessing import Queue, Process
+from colorama import Fore as Fo
+from numpy.ma.core import append
 
 logging.basicConfig(filename="securak.log",
                     filemode='w',
-                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                    format='%(asctime)s,%(msecs)03d %(name)s %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
                     level=logging.DEBUG)
 
 logger = logging.getLogger("securac")
 
 input_q = Queue(maxsize=1000)
+processed_data_sum = [0]
+lock = multiprocessing.Lock()
 WORKER_NUMBER = 7
 file_path = r"./words2.txt"
 
@@ -39,25 +43,34 @@ def input_worker(input_q, word_list):
     worker_pid = os.getpid()
     print("  Started input worker no {}".format(worker_pid))
     counter = 0
+    c3 = 0
     item = []
     start_time = time()
     for w1 in word_list:
         for w2 in word_list:
             print(f"preparing 2,5 mln data...")
             for w3 in word_list:
+                c3 += 1
+                if c3 % 50 == 0:
+                    logger.info(f"{Fo.YELLOW}prepared 5 mln data...{Fo.RESET}")
+                    lock.acquire()
+                    # logger.info(f"{Fo.RED} total processed {processed_data_sum:,d} guesses{Fo.RESET}")
+                    lock.release()
                 for w4 in word_list:
                     guess = f"{w1}{w2}{w3}{w4}"
                     item.append(guess)
                     counter += 1
-                    if counter % 1000 == 0:
-                        # logger.info(f"worker: {worker_pid} time: {time() - start_time} prepared: {counter} guesses")
+                    if counter % 100_000 == 0:
+                        # logger.info(f"{Fo.YELLOW}worker: {worker_pid} time: {time() - start_time} prepared: {counter} guesses")
                         input_q.put(item)
+                        logger.debug(f"{len(item)=}")
+                        item.clear()
                         start_time = time()
     for _ in range(WORKER_NUMBER):
         input_q.put(None)
 
 
-def worker(input_q):
+def worker(input_q, processed_data_sum):
     worker_pid = os.getpid()
     print("  Started worker no {}".format(worker_pid))
     n = 0
@@ -71,9 +84,15 @@ def worker(input_q):
             break
         for guess in item:
             calculate(guess)
+        logger.debug(f"{Fo.LIGHTBLUE_EX}{len(item)=}")
+        lock.acquire()
+        processed_data_sum[0] += len(item)
+        logger.info(f"{Fo.CYAN} total processed {processed_data_sum[0]:,} guesses{Fo.RESET}")
+        lock.release()
+
         if (time() - timer ) > 5:
             timer = time()
-            logging.info(f"worker: {worker_pid} guessing: {n * 200} per second, input_q: {input_q.qsize()}")
+            logging.info(f"{Fo.GREEN}worker: {worker_pid} guessing: {int(n / 5 * len(item)):,d} per second, input_q: {input_q.qsize()}{Fo.RESET}")
             n = 0
     print("    Finished worker no {}               ".format(worker_pid))
 
@@ -99,7 +118,7 @@ if __name__ == '__main__':
 
     print(f"Starting workers number: {WORKER_NUMBER}")
     for w in range(WORKER_NUMBER):
-        t = Process(target=worker, args=(input_q,))
+        t = Process(target=worker, args=(input_q, processed_data_sum))
         worker_processes.append(t)
 
     start_time = time()
