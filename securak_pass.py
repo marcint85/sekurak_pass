@@ -9,15 +9,15 @@ import logging
 from multiprocessing import Queue, Process
 
 logging.basicConfig(filename="securak.log",
-                    filemode='a',
+                    filemode='w',
                     format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
                     level=logging.DEBUG)
 
 logger = logging.getLogger("securac")
 
-input_q = Queue(maxsize=10000)
-WORKER_NUMBER = 4
+input_q = Queue(maxsize=1000)
+WORKER_NUMBER = 7
 file_path = r"./words2.txt"
 
 
@@ -38,13 +38,21 @@ def calculate(item):
 def input_worker(input_q, word_list):
     worker_pid = os.getpid()
     print("  Started input worker no {}".format(worker_pid))
+    counter = 0
+    item = []
+    start_time = time()
     for w1 in word_list:
         for w2 in word_list:
             print(f"preparing 2,5 mln data...")
             for w3 in word_list:
                 for w4 in word_list:
                     guess = f"{w1}{w2}{w3}{w4}"
-                    input_q.put(guess)
+                    item.append(guess)
+                    counter += 1
+                    if counter % 1000 == 0:
+                        # logger.info(f"worker: {worker_pid} time: {time() - start_time} prepared: {counter} guesses")
+                        input_q.put(item)
+                        start_time = time()
     for _ in range(WORKER_NUMBER):
         input_q.put(None)
 
@@ -54,19 +62,24 @@ def worker(input_q):
     print("  Started worker no {}".format(worker_pid))
     n = 0
     # while not input_q.empty(): # This solution is invalid - not 100% certain
+    timer = time()
     while True:
+        n += 1
         # print("Input queue size: {}".format(input_q.qsize()))
         item = input_q.get()
         if item is None:
             break
-        calculate(item)
-        n += 1
-        if n % 100000 == 0:
-            logging.info(f"worker number: {worker_pid} guessing: {n}/{possible_pass_number}")
+        for guess in item:
+            calculate(guess)
+        if (time() - timer ) > 5:
+            timer = time()
+            logging.info(f"worker: {worker_pid} guessing: {n * 200} per second, input_q: {input_q.qsize()}")
+            n = 0
     print("    Finished worker no {}               ".format(worker_pid))
 
 
 if __name__ == '__main__':
+
     word_list = get_word_list(file_path)
     # removing polish characters
     word_list = [unidecode.unidecode(w) for w in word_list]
@@ -80,9 +93,9 @@ if __name__ == '__main__':
 
     worker_processes = []
 
-    input_t = Process(target=input_worker, args=(input_q, word_list[:1000]))
-    input_t_2 = Process(target=input_worker, args=(input_q, word_list[1000:2000]))
-    input_t_3 = Process(target=input_worker, args=(input_q, word_list[2000:]))
+    input_t = Process(target=input_worker, args=(input_q, word_list))
+    # input_t_2 = Process(target=input_worker, args=(input_q, word_list[1000:2000]))
+    # input_t_3 = Process(target=input_worker, args=(input_q, word_list[2000:]))
 
     print(f"Starting workers number: {WORKER_NUMBER}")
     for w in range(WORKER_NUMBER):
@@ -92,16 +105,16 @@ if __name__ == '__main__':
     start_time = time()
 
     input_t.start()
-    input_t_2.start()
-    input_t_3.start()
+    # input_t_2.start()
+    # input_t_3.start()
     for t in worker_processes:
         t.start()
 
     for t in worker_processes:
         t.join()  # Wait for every worker to finish his job
     input_t.join()
-    input_t_2.join()
-    input_t_3.join()
+    # input_t_2.join()
+    # input_t_3.join()
     total_time = time() - start_time
 
 
