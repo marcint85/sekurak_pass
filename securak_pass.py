@@ -73,7 +73,7 @@ def input_worker(input_q: Queue, word_list: list[str], processed_sum: Value) -> 
                     counter += 1
                     if counter % ITEM_LENGTH == 0:
                         input_q.put(item)
-                        item.clear()
+                        item = []
                     if counter % (200 * ITEM_LENGTH) == 0:
                         logger.info(f"{Fo.LIGHTYELLOW_EX}Added 200 items to Input Queue with length: {ITEM_LENGTH:,} each in {time() - start_time:.3f} seconds{Fo.RESET}")
                         start_time = time()
